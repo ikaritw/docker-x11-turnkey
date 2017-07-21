@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<TurnkeyConfigs>
+	<TurnkeyConfig id="EINVTurnkeyConfig">
+		<!-- 正式環境 -->
+		<property name="production-sftp-ip" value="sftp.einvoice.nat.gov.tw" />
+		<property name="production-sftp-port" value="2222" />
+
+		<property name="production-targetpoint"
+			value="https://gw.einvoice.nat.gov.tw/GEINVInvoiceWS/invoice?WSDL" />
+		<property name="production-vac-targetpoint"
+			value="https://gw.einvoice.nat.gov.tw/GEINVDTPListWS/partnerlist?WSDL" />
+		<!-- 測試環境 -->
+		<property name="test-sftp-ip" value="tsftp.einvoice.nat.gov.tw" />
+		<property name="test-sftp-port" value="2222" />
+		<property name="test-targetpoint"
+			value="https://tgw.einvoice.nat.gov.tw/GEINVInvoiceWS/invoice?WSDL" />
+		<property name="test-vac-targetpoint"
+			value="https://tgw.einvoice.nat.gov.tw/GEINVDTPListWS/partnerlist?WSDL" />
+                <!-- 開發環境 -->
+		<property name="develop-sftp-ip" value="172.31.70.61" />
+		<property name="develop-sftp-port" value="2222" />
+		<property name="develop-targetpoint"
+			value="http://172.31.70.61:9001/GEINVInvoiceWS/invoice?WSDL" />
+		<property name="develop-vac-targetpoint"
+			value="http://172.31.70.61:9001/GEINVDTPListWS/partnerlist?WSDL" />
+	</TurnkeyConfig>
+</TurnkeyConfigs>

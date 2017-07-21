@@ -1,0 +1,60 @@
+#! /bin/bash
+echo "excute..."
+. setenv32
+
+#JRE=/usr/bin/java
+JRE=`which java`
+
+if [[ "$JRE" == "" ]] ; then
+echo "###########################################"
+echo JRE not existed!
+echo "###########################################"
+exit
+fi                     
+
+# KEYSTORE=/GEINV/ca/cacerts
+# KEYSTORE=/etc/ssl/certs/java/cacerts
+# KEYSTORE=$AP/ca/tnkcacerts
+# tnkcacerts.ori
+
+# TRUSSTORE=/GEINV/ca/tnkcacerts.ori
+# TRUSSTORE=/GEINV/ca/tnkcacerts.bak
+TRUSSTORE=$AP/ca/tnkcacerts
+
+if [ ! -f $TRUSSTORE ] ; then
+echo "###########################################"
+echo keystore $TRUSSTORE not existed!
+echo "###########################################"
+exit
+fi                     
+
+#if [ ! -f $KEYSTORE ] ; then
+#echo "###########################################"
+#echo keystore $KEYSTORE not existed!
+#exit
+#echo "###########################################"
+#fi
+
+SSL_OPT=-Dsun.security.ssl.allowUnsafeRenegotiation=true
+SSL_TRUS="-Djavax.net.ssl.trustStore=$TRUSSTORE -Djavax.net.ssl.trustStorePassword=changeit"
+
+# SSL_CERT="-Djavax.net.ssl.keyStore=$KEYSTORE -Djavax.net.ssl.keyStorePassword=changeit $SSL_OPT"
+
+#TNK_REGION="-Dmode=local -Duser.language=zh -Duser.region=TW"
+MAIN_AP=com.tradevan.gateway.client.job.BatchSchedulerSwitcher
+TNK_MODE=-Dmode=local
+
+
+# echo $CLASSPATH
+echo 
+
+cd $AP
+
+cmd=".... $SSL_OPT $SSL_TRUS $SSL_CERT $TNK_MODE $TNK_REGION $MAIN_AP"
+echo $cmd;
+
+cmd="$JRE -classpath $CLASSPATH $SSL_OPT $SSL_TRUS $SSL_CERT $TNK_MODE -Xmx768m $TNK_REGION $MAIN_AP off"
+
+
+# echo $cmd
+nohup $cmd > /dev/null 2> /dev/null &

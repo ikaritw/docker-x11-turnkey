@@ -1,0 +1,148 @@
+10-26 11:14:37 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Statement was canceled or the session timed out; SQL statement:
+delete from TURNKEY_SYSEVENT_LOG [57014-160]
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:329)
+	at org.h2.message.DbException.get(DbException.java:169)
+	at org.h2.message.DbException.get(DbException.java:146)
+	at org.h2.message.DbException.get(DbException.java:135)
+	at org.h2.engine.Session.checkCanceled(Session.java:884)
+	at org.h2.command.Prepared.checkCanceled(Prepared.java:273)
+	at org.h2.command.Prepared.setCurrentRowNumber(Prepared.java:331)
+	at org.h2.command.dml.Delete.update(Delete.java:70)
+	at org.h2.command.CommandContainer.update(CommandContainer.java:73)
+	at org.h2.command.Command.executeUpdate(Command.java:219)
+	at org.h2.jdbc.JdbcStatement.executeInternal(JdbcStatement.java:177)
+	at org.h2.jdbc.JdbcStatement.execute(JdbcStatement.java:152)
+	at org.h2.server.web.WebApp.getResult(WebApp.java:1311)
+	at org.h2.server.web.WebApp.query(WebApp.java:1001)
+	at org.h2.server.web.WebApp$1.next(WebApp.java:964)
+	at org.h2.server.web.WebApp$1.next(WebApp.java:967)
+	at org.h2.server.web.WebThread.process(WebThread.java:166)
+	at org.h2.server.web.WebThread.run(WebThread.java:93)
+	at java.lang.Thread.run(Unknown Source)
+10-26 11:30:24 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Value too long for column "CATEGORY_TYPE VARCHAR(5) DEFAULT NULL": "'Category' (8)"; SQL statement:
+INSERT INTO TURNKEY_MESSAGE_LOG (SEQNO,SUBSEQNO ,UUID ,MESSAGE_TYPE,  CATEGORY_TYPE,PROCESS_TYPE,FROM_PARTY_ID,  TO_PARTY_ID,MESSAGE_DTS, CHARACTER_COUNT,STATUS,IN_OUT_BOUND,FROM_ROUTING_ID,TO_ROUTING_ID,INVOICE_IDENTIFIER) values('00000000','00000','uuid','Message','Category','Process','From','To','20111026113024584','10','S','O','FR','TO','II') [22001-160]
+10-26 11:48:52 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "ADD[*] KEY TURNKEY_MESSAGE_LOG_INDEX1 (MESSAGE_DTS),"; expected "ALTER, ANALYZE, {"; SQL statement:
+ADD KEY TURNKEY_MESSAGE_LOG_INDEX1 (MESSAGE_DTS), [42001-160]
+10-26 11:51:49 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Index "INDEX1" already exists; SQL statement:
+Create INDEX index1 on TURNKEY_MESSAGE_LOG (UUID) [42111-160]
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:329)
+	at org.h2.message.DbException.get(DbException.java:169)
+	at org.h2.message.DbException.get(DbException.java:146)
+	at org.h2.command.ddl.CreateIndex.update(CreateIndex.java:78)
+	at org.h2.command.CommandContainer.update(CommandContainer.java:73)
+	at org.h2.command.Command.executeUpdate(Command.java:219)
+	at org.h2.jdbc.JdbcStatement.executeInternal(JdbcStatement.java:177)
+	at org.h2.jdbc.JdbcStatement.execute(JdbcStatement.java:152)
+	at org.h2.server.web.WebApp.getResult(WebApp.java:1311)
+	at org.h2.server.web.WebApp.query(WebApp.java:1001)
+	at org.h2.server.web.WebApp$1.next(WebApp.java:964)
+	at org.h2.server.web.WebApp$1.next(WebApp.java:967)
+	at org.h2.server.web.WebThread.process(WebThread.java:166)
+	at org.h2.server.web.WebThread.run(WebThread.java:93)
+	at java.lang.Thread.run(Unknown Source)
+10-26 12:03:12 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Unknown data type: "FROM_CONFIG_INDEX1"; SQL statement:
+CREATE TABLE FROM_CONFIG(
+   TRANSPORT_ID         VARCHAR(10),
+   TRANSPORT_PASSWORD   VARCHAR(45),
+   PARTY_ID             VARCHAR(10) NOT NULL,
+   PARTY_DESCRIPTION    VARCHAR(200),
+   ROUTING_ID           VARCHAR(39),
+   ROUTING_DESCRIPTION  VARCHAR(200),
+   SIGN_ID              VARCHAR(4),
+   SUBSTITUTE_PARTY_ID  VARCHAR(10),
+   PRIMARY KEY (PARTY_ID),
+   KEY FROM_CONFIG_INDEX1 (SUBSTITUTE_PARTY_ID)
+   
+) [50004-160]
+	at org.h2.message.DbException.getJdbcSQLException(DbException.java:329)
+	at org.h2.message.DbException.get(DbException.java:169)
+	at org.h2.message.DbException.get(DbException.java:146)
+	at org.h2.command.Parser.parseColumnWithType(Parser.java:3643)
+	at org.h2.command.Parser.parseColumnForTable(Parser.java:3506)
+	at org.h2.command.Parser.parseCreateTable(Parser.java:5163)
+	at org.h2.command.Parser.parseCreate(Parser.java:3800)
+	at org.h2.command.Parser.parsePrepared(Parser.java:324)
+	at org.h2.command.Parser.parse(Parser.java:279)
+	at org.h2.command.Parser.parse(Parser.java:251)
+	at org.h2.command.Parser.prepareCommand(Parser.java:217)
+	at org.h2.engine.Session.prepareLocal(Session.java:415)
+	at org.h2.engine.Session.prepareCommand(Session.java:364)
+	at org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1119)
+	at org.h2.jdbc.JdbcStatement.executeInternal(JdbcStatement.java:164)
+	at org.h2.jdbc.JdbcStatement.execute(JdbcStatement.java:152)
+	at org.h2.server.web.WebApp.getResult(WebApp.java:1311)
+	at org.h2.server.web.WebApp.query(WebApp.java:1001)
+	at org.h2.server.web.WebApp$1.next(WebApp.java:964)
+	at org.h2.server.web.WebApp$1.next(WebApp.java:967)
+	at org.h2.server.web.WebThread.process(WebThread.java:166)
+	at org.h2.server.web.WebThread.run(WebThread.java:93)
+	at java.lang.Thread.run(Unknown Source)
+10-26 12:05:08 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "REATE[*] TABLE TURNKEY_MESSAGE_LOG_DETAIL(
+   SEQNO                VARCHAR(8) NOT NULL,
+   SUBSEQNO             VARCHAR(5) NOT NULL,
+   PROCESS_DTS          VARCHAR(17),
+   TASK                 VARCHAR(30),
+   STATUS               VARCHAR(5),
+   FILENAME             VARCHAR(300),
+   UUID                 VARCHAR(40),
+   PRIMARY KEY (SEQNO, SUBSEQNO, TASK) 
+)"; expected "ROLLBACK, REVOKE, RUNSCRIPT, RELEASE, {"; SQL statement:
+REATE TABLE TURNKEY_MESSAGE_LOG_DETAIL(
+   SEQNO                VARCHAR(8) NOT NULL,
+   SUBSEQNO             VARCHAR(5) NOT NULL,
+   PROCESS_DTS          VARCHAR(17),
+   TASK                 VARCHAR(30),
+   STATUS               VARCHAR(5),
+   FILENAME             VARCHAR(300),
+   UUID                 VARCHAR(40),
+   PRIMARY KEY (SEQNO, SUBSEQNO, TASK) 
+) [42001-160]
+10-26 12:07:34 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "CREATE TABLE TURNKEY_USER_PROFILE (
+  USER_ID VARCHAR(10) NOT NULL,
+  USER_PASSWORD VARCHAR(100) DEFAULT NULL,
+  USER_ROLE VARCHAR(2) DEFAULT NULL,
+  PRIMARY KEY (USER_ID) USING[*] BTREE
+)"; expected "INDEX, ,, )"; SQL statement:
+CREATE TABLE TURNKEY_USER_PROFILE (
+  USER_ID VARCHAR(10) NOT NULL,
+  USER_PASSWORD VARCHAR(100) DEFAULT NULL,
+  USER_ROLE VARCHAR(2) DEFAULT NULL,
+  PRIMARY KEY (USER_ID) USING BTREE
+) [42001-160]
+11-03 17:13:25 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "TURNKEY_TRANSPORT_CONFIG[*] SELECT * FROM TURNKEY_USER_PROFILE"; expected "TRUNCATE, {"; SQL statement:
+TURNKEY_TRANSPORT_CONFIG SELECT * FROM TURNKEY_USER_PROFILE [42001-161]
+11-03 17:13:27 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "TURNKEY_TRANSPORT_CONFIG[*] TURNKEY_TRANSPORT_CONFIG SELECT * FROM TURNKEY_USER_PROFILE"; expected "TRUNCATE, {"; SQL statement:
+TURNKEY_TRANSPORT_CONFIG TURNKEY_TRANSPORT_CONFIG SELECT * FROM TURNKEY_USER_PROFILE [42001-161]
+11-03 17:13:36 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "TURNKEY_TRANSPORT_CONFIG[*] TURNKEY_TRANSPORT_CONFIG"; expected "TRUNCATE, {"; SQL statement:
+TURNKEY_TRANSPORT_CONFIG TURNKEY_TRANSPORT_CONFIG [42001-161]
+11-03 17:13:41 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "TURNKEY_TRANSPORT_CONFIG[*] TURNKEY_TRANSPORT_CONFIG"; expected "TRUNCATE, {"; SQL statement:
+TURNKEY_TRANSPORT_CONFIG TURNKEY_TRANSPORT_CONFIG [42001-161]
+11-17 18:50:43 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "SCHEDULE_CONFIG[*] SELECT * FROM FROM_CONFIG"; expected "SELECT, SET, SAVEPOINT, SCRIPT, SHUTDOWN, SHOW, {"; SQL statement:
+SCHEDULE_CONFIG SELECT * FROM FROM_CONFIG [42001-160]
+11-17 18:50:52 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Syntax error in SQL statement "TASK_CONFIG[*] SELECT * FROM SCHEDULE_CONFIG"; expected "TRUNCATE, {"; SQL statement:
+TASK_CONFIG SELECT * FROM SCHEDULE_CONFIG [42001-160]
+11-17 18:51:09 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Table "TASK_CONFTO_CONFIG" not found; SQL statement:
+SELECT * FROM TASK_CONFTO_CONFIG IG [42102-160]
+11-17 18:51:16 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Table "TURNKEYTURNKEY_MESSAGE_LOG_DETAIL" not found; SQL statement:
+SELECT * FROM TURNKEYTURNKEY_MESSAGE_LOG_DETAIL _MESSAGE_LOG [42102-160]
+11-17 18:51:18 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Table "TURNKEYTURNKEY_MESSAGE_LOG_DETAIL" not found; SQL statement:
+SELECT * FROM TURNKEYTURNKEY_MESSAGE_LOG_DETAIL TURNKEY_SEQUENCE _MESSAGE_LOG [42102-160]
+11-17 18:51:21 jdbc[2]: exception
+org.h2.jdbc.JdbcSQLException: Table "TURNKEYTURNKEY_MESSAGE_LOG_DETAIL" not found; SQL statement:
+SELECT * FROM TURNKEYTURNKEY_MESSAGE_LOG_DETAIL TURNKEY_SEQUENCE TURNKEY_SYSEVENT_LOG _MESSAGE_LOG [42102-160]

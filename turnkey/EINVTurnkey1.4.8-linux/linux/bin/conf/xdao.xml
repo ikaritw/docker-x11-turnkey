@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<taurus-xdao>
+    <data-source id="ds1" class="com.tradevan.taurus.xdao.ds.JdbcDataSource" type="postgresql" loadOnStart="false">
+        <property name="jdbc-driver" value="org.postgresql.Driver"/>
+        <property name="jdbc-url" value="jdbc:postgresql://localhost:5432/einvturnkey"/>
+        <property name="user" value="turnkey"/>
+        <property name="password" value="turnkey"/>
+        <!-- Connection Pool -->
+        <property name="pool-size" value="8"/>   <!-- Connection Pool大小 -->
+        <property name="wait-time" value="-1"/> <!-- 取Connection時的等待時間(秒) -->
+        
+    </data-source>
+    
+    <connections defaultMaxRow="500" defaultPageSize="20" defaultSqlTimeout="90" 
+                 jtaFactory="com.tradevan.taurus.xdao.jta.JotmTransaction">
+                 <!-- logger="XdaoLogger" logConfig="conf/logging.xml" -->
+        <connection id="TurnkeyConn"  dataSource="ds1">
+            <property name="max-row" value="1000"/>
+            <property name="page-size" value="20"/>
+            <property name="sql-timeout" value="90"/>
+            <property name="show-sql" value="false"/>
+            <property name="field-case-sensitive" value="false"/>
+            <!-- <property name="data-class" value="com.tradevan.taurus.xdao.DataObject"/> -->
+            <property name="keep-data-type" value="false"/>
+            
+            <!-- null-value-mode must be one of 'skip', 'null', or 'empty' -->
+            <property name="null-value-mode" value="empty"/>
+            
+            <property name="generated-key" value="false"/>
+            <property name="prepared-mode" value="true"/>
+        </connection>
+        
+    </connections>
+  
+</taurus-xdao>

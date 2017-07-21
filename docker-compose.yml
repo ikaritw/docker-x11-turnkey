@@ -1,0 +1,27 @@
+version: '2'
+services:
+  ## 允許所有用戶訪問X11服務
+  ## > xhost +
+  turnkey:  
+    build: ./turnkey
+    image: ikaritw/einvturnkey:1.4.8
+    restart: "no"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./VOLUMES/Workspace:/Workspace
+      
+    environment:
+      - DISPLAY=unix$DISPLAY
+
+  turnkey-alpine:
+    build: ./turnkey-alpine
+    image: ikaritw/einvturnkey-alpine:1.4.8
+    restart: "no"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./VOLUMES/Workspace:/Workspace
+      
+    environment:
+      - DISPLAY=unix$DISPLAY

@@ -1,0 +1,439 @@
+package com.tradevan.gateway.client.view;
+
+import java.io.IOException;
+
+import org.apache.commons.validator.GenericValidator;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.ShellAdapter;
+import org.eclipse.swt.events.TraverseEvent;
+import org.eclipse.swt.events.TraverseListener;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Text;
+
+import com.tradevan.gateway.client.dao.bean.TurnkeyUserProfile;
+import com.tradevan.gateway.client.dao.model.XdaoInitialer;
+import com.tradevan.gateway.client.dao.service.TurnkeyUserProfileService;
+import com.tradevan.gateway.client.util.CryptException;
+import com.tradevan.gateway.client.util.CryptUtil;
+import com.tradevan.gateway.client.util.TurnkeyConfig;
+import com.tradevan.gateway.client.util.TurnkeyConstant;
+import com.tradevan.gateway.client.util.TurnkeyLogger;
+import com.tradevan.gateway.client.util.TurnkeyLoggerHandler;
+import com.tradevan.gateway.client.util.TurnkeyUserConfig;
+import com.tradevan.gateway.client.util.TurnkeyUtil;
+import com.tradevan.taurus.xdao.XdaoException;
+
+/**
+ * Title: LoginPage<br>
+ * Description: 登入畫面，提供使用者輸入帳密登畫面<br>
+ * Company: Tradevan Co.<br>
+ * since: 2011.08.11<br>
+ * 
+ * @author I-Chun Huang
+ * @since 1.0.0
+ */
+public class LoginPage extends SelectionAdapter {
+    private TurnkeyLoggerHandler logger = TurnkeyLogger.getLogger();
+    private static LoginPage instance = null;
+    private TurnkeyUserConfig userCfg = null;
+//    private static TurnkeyUserProfile userProfile = null;
+    private static String userId = "";
+    private static boolean isAdmin = false;
+    // 主畫面
+    private Shell sShellMain = null;
+    // -- 帳密 --
+    private Composite compositeSetting = null;
+    private Label lblUserID = null;
+    private Label lblUserPwd = null;
+    private Text txtUserID = null;
+    private Text txtUserPwd = null;
+    private Button chkRememberID = null;
+    // -- 啟動密碼 --
+    private Composite compositeStartPwd = null;
+    private Label lblStartPwd = null;
+    private Text txtStartPwd = null;
+    // -- 按鈕 --
+    private Composite compositeBtns = null;
+    private Button btnSubmit = null;
+    private Button btnCancel = null;
+    private Button btnExit = null;
+
+    private LoginPage() {
+        createSShell();
+    }
+    
+    public static LoginPage getInstance() {
+        if (instance == null) {
+            synchronized (LoginPage.class) {
+                if (instance == null) {
+                    instance = new LoginPage();
+                }
+            }
+        }
+        
+        return instance;
+    }
+    /**
+     * This method initializes sShell
+     * 
+     * @param bounds
+     * @param shell
+     */
+    public void createSShell() {
+        Display display = Display.getCurrent();
+        sShellMain = new Shell(display, SWT.SHELL_TRIM);
+        sShellMain.setText(TurnkeyUtil.getMessage("UserLogin"));
+        sShellMain.setLayout(new GridLayout());
+        UIUtil.setShellIcon(sShellMain);
+        sShellMain.addShellListener(new CloseSettingPage());
+        if(TurnkeyConfig.getUserCfg().getEnableStartPwd()){
+            createCompositeStartPwd();
+        }else{
+            createCompositeSetting();
+        }
+        createCompositeBtns();
+
+        showDefData();
+        UIUtil.setBounds(sShellMain, 330, SWT.DEFAULT);
+        sShellMain.open();
+    }
+
+    /**
+     * 用帳密登入的畫面
+     */
+    private void createCompositeSetting() {
+        compositeSetting = new Composite(sShellMain, SWT.NONE);
+        compositeSetting.setLayout(new GridLayout(2, false));
+        compositeSetting.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+
+        lblUserID = new Label(compositeSetting, SWT.NONE);
+        lblUserID.setText(TurnkeyUtil.getMessage("UserID"));
+        txtUserID = new Text(compositeSetting, SWT.BORDER);
+        txtUserID.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        txtUserID.addTraverseListener(new KeyTraversed());
+
+        lblUserPwd = new Label(compositeSetting, SWT.NONE);
+        lblUserPwd.setText(TurnkeyUtil.getMessage("UserPwd"));
+        txtUserPwd = new Text(compositeSetting, SWT.BORDER | SWT.PASSWORD);
+        txtUserPwd.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        txtUserPwd.addTraverseListener(new KeyTraversed());
+
+        chkRememberID = new Button(compositeSetting, SWT.CHECK);
+        chkRememberID.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false, 2, 1));
+        chkRememberID.setText(TurnkeyUtil.getMessage("RememberID"));
+    }
+    
+    /**
+     * 用啟動密碼登入的畫面
+     */
+    private void createCompositeStartPwd() {
+        compositeStartPwd = new Composite(sShellMain, SWT.NONE);
+        compositeStartPwd.setLayout(new GridLayout(2, false));
+        compositeStartPwd.setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+
+        lblStartPwd = new Label(compositeStartPwd, SWT.NONE);
+        lblStartPwd.setText(TurnkeyUtil.getMessage("StartPwd"));
+        txtStartPwd = new Text(compositeStartPwd, SWT.BORDER | SWT.PASSWORD);
+        txtStartPwd.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
+        txtStartPwd.addTraverseListener(new KeyTraversed());
+    }
+
+    /**
+     * This method initializes compositeBtns
+     * 
+     */
+    private void createCompositeBtns() {
+        GridData btnData = new GridData(SWT.RIGHT, SWT.BOTTOM, true, false);
+        btnData.widthHint = 90;
+        compositeBtns = new Composite(sShellMain, SWT.NONE);
+        compositeBtns.setLayout(new GridLayout(3, false));
+        compositeBtns.setLayoutData(new GridData(SWT.CENTER, SWT.BOTTOM, true, true));
+
+        btnSubmit = new Button(compositeBtns, SWT.PUSH);
+        btnSubmit.setLayoutData(btnData);
+        btnSubmit.setText(TurnkeyUtil.getMessage("Submit"));
+        btnSubmit.addSelectionListener(this);
+
+        btnCancel = new Button(compositeBtns, SWT.PUSH);
+        btnCancel.setLayoutData(btnData);
+        btnCancel.setText(TurnkeyUtil.getMessage("Reset"));
+        btnCancel.addSelectionListener(this);
+        
+        btnExit = new Button(compositeBtns, SWT.PUSH);
+        btnExit.setLayoutData(btnData);
+        btnExit.setText(TurnkeyUtil.getMessage("Exit"));
+        btnExit.addSelectionListener(this);
+    }
+
+    /*******************************************************************
+     * 以上為畫面設定，以下為Action
+     *******************************************************************/
+
+    /**
+     * 讀UserConfig，將資料寫入對應的欄位
+     */
+    private void showDefData() {
+        TurnkeyConfig.reloadUserConfig(); // 還原預設
+        userCfg = TurnkeyConfig.getUserCfg();
+        if(userCfg.getEnableStartPwd()){
+            txtStartPwd.setText("");
+        }else{
+            txtUserPwd.setText("");
+            String id = userCfg.getLoginId();
+            if (!GenericValidator.isBlankOrNull(id)) {
+                txtUserID.setText(id);
+                chkRememberID.setSelection(true);
+                txtUserPwd.setFocus();
+            } else {
+                txtUserID.setText("");
+                txtUserID.setFocus();
+                chkRememberID.setSelection(false);
+            }
+        }
+    }
+
+    /**
+     * 檢查使用者帳密是否為空值
+     * 
+     * @return
+     */
+    private boolean chkUserData() {
+        if(!queryDB()){
+            return false;
+        }
+        if (GenericValidator.isBlankOrNull(txtUserID.getText())) {
+            UIUtil.showMsgBox(sShellMain, SWT.ICON_ERROR, TurnkeyUtil.getMessage("Error"), TurnkeyUtil.getMessage("NullUserID"));
+            txtUserID.setFocus();
+            return false;
+        }
+        if (GenericValidator.isBlankOrNull(txtUserPwd.getText())) {
+            UIUtil.showMsgBox(sShellMain, SWT.ICON_ERROR, TurnkeyUtil.getMessage("Error"), TurnkeyUtil.getMessage("NullUserPwd"));
+            txtUserPwd.setFocus();
+            return false;
+        }
+
+        return true;
+    }
+    
+    /**
+     * 檢查啟動密碼是否為空值
+     * @return
+     */
+    private boolean chkStartPwdData() {
+        if (GenericValidator.isBlankOrNull(txtStartPwd.getText())) {
+            UIUtil.showMsgBox(sShellMain, SWT.ICON_ERROR, TurnkeyUtil.getMessage("Error"), TurnkeyUtil.getMessage("NullStartPwd"));
+            txtStartPwd.setFocus();
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 將資料存入userCfg bean中
+     */
+    private void setData() {
+        if (chkRememberID.getSelection()) {
+            userCfg.setLoginId(txtUserID.getText());
+        } else {
+            userCfg.setLoginId("");
+        }
+    }
+
+    /**
+     * 儲存資料
+     * @return
+     */
+    private boolean saveData() {
+        setData();
+        try {
+            TurnkeyConfig.saveUserCfg(userCfg);
+            return true;
+        } catch (IOException e1) {
+            return false;
+        }
+    }
+    
+    /**
+     * 檢查DB是否可以連線
+     * @return
+     */
+    private boolean queryDB() {
+        String methodName = "queryDB";
+        String msg = "";
+        try {
+            TurnkeyUserProfileService.INSTANCE.getTurnkeyUserConfig();
+        } catch (XdaoException e) {
+            msg = UIUtil.getDBConnectFailMsg(e, methodName);
+        } catch (Throwable e) {
+            logger.error("Throwable error", e, methodName);
+            msg = TurnkeyUtil.getShotStringMsg(e.getMessage());
+        }
+        // 有錯誤發生，顯示訊息並關閉視窗
+        if(msg.length() > 0){
+            UIUtil.showMsgBox(sShellMain, SWT.ERROR, TurnkeyUtil.getMessage("Fail"), msg);
+            return false;
+        }
+        return true;
+    }
+    
+    /**
+     * 登入主畫面
+     * @return
+     */
+    private void login() {
+        if(userCfg.getEnableStartPwd()){
+            loginByStartPwd();
+        }else{
+            loginByUserData();
+        }
+    }
+    
+    /**
+     * 利用使用者帳密登入資料
+     */
+    private void loginByUserData() {
+        String methodName = "loginByUserData";
+        if (!chkUserData()) return ;
+        TurnkeyUserProfile profile;
+        String msg = "";
+        try {
+            profile = TurnkeyUserProfileService.INSTANCE.queryByPKey(txtUserID.getText());
+            if (profile != null) {
+                if (!txtUserPwd.getText().equals(profile.getUserPassword())) {
+                    // 密碼錯誤
+                    msg = TurnkeyUtil.getMessage("ErrorUserPwd");
+                    txtUserPwd.setText("");
+                } else {
+                    // 儲存資料
+                    saveData();
+                    // 設定登入資訊
+                    LoginPage.userId = profile.getUserId();
+                    LoginPage.isAdmin = TurnkeyConstant.ROLE_ADMIN.equals(profile.getUserRole());
+                    UIUtil.setCanOpenPageUserManagement(UIUtil.canOpen(UIUtil.PAGE_USER_MANAGEMENT));
+                    // 開啟主畫面
+                    MainPage.getInstance();
+                    sShellMain.setVisible(false);
+                }
+            } else {
+                msg = TurnkeyUtil.getMessage("ErrorUserID");
+                txtUserID.setText("");
+                txtUserPwd.setText("");
+            }
+        } catch (XdaoException e) {
+            msg = UIUtil.getDBConnectFailMsg(e, methodName);
+        }
+        if (msg.length() > 0) {
+            UIUtil.showMsgBox(sShellMain, SWT.ICON_ERROR, TurnkeyUtil.getMessage("Error"), msg);
+        }
+    }
+    
+    /**
+     * 利用啟動密碼登入
+     */
+    private void loginByStartPwd() {
+        if(!chkStartPwdData()) return;
+        // 檢查密碼是否錯誤
+        CryptException cryptException = CryptUtil.isFileEncryptAdmin(txtStartPwd.getText());
+        if(cryptException != null){
+            UIUtil.showMsgBox(sShellMain, SWT.ICON_ERROR, TurnkeyUtil.getMessage("Error"), cryptException.getErrExceptionMsg());
+            if(cryptException.isStopProgram()){ // 超過最大允許解密失敗次數
+                System.exit(0);
+            }
+            txtStartPwd.setText("");
+            return; // 解密失敗 
+        }
+        // 密碼正確
+        CryptUtil.setCryptPwd(txtStartPwd.getText());
+        XdaoInitialer.reloadXML();
+        if(!queryDB()){
+            return ;
+        }
+        // 設定登入資訊
+        LoginPage.isAdmin = true;
+        UIUtil.setCanOpenPageUserManagement(false);
+        CryptUtil.setCryptPwd(txtStartPwd.getText()); // 設定加解密密碼
+        // 開啟主畫面
+        MainPage.getInstance();
+        sShellMain.setVisible(false);
+    }
+
+    /**
+     * 關閉設定視窗
+     */
+    class CloseSettingPage extends ShellAdapter {
+        public void shellClosed(org.eclipse.swt.events.ShellEvent e) {
+            if (e.getSource().equals(sShellMain)) {
+                Display.getCurrent().close();
+            }
+        }
+    }
+
+    class KeyTraversed implements TraverseListener {
+
+        @Override
+        public void keyTraversed(TraverseEvent e) {
+            if (e.detail == SWT.TRAVERSE_RETURN) {
+                // 按下enter
+                login();
+            }
+        }
+    }
+
+    /**
+     * 各按鈕點選事件
+     */
+    public void widgetSelected(org.eclipse.swt.events.SelectionEvent e) {
+        if (e.getSource().equals(btnSubmit)) {
+            // 按下確定，儲存資料，登入主畫面
+            login();
+        } else if (e.getSource().equals(btnCancel)) {
+            // 按下取消，還原預設
+            showDefData();
+        }else if(e.getSource().equals(btnExit)){
+            // 按下離開，離開畫面
+            sShellMain.close();
+        }
+    }
+
+    /*******************************************************************
+     * Login相關資訊
+     *******************************************************************/
+    
+    /**
+     * 取得使用者角色權限
+     * 只有在本基端且為Admin才具有Adimn的權限
+     * @return
+     */
+    public static boolean getUserRole() {
+//        String mode = System.getProperty(TurnkeyConstant.MODE);
+        String mode = "local" ;
+        // 只有mode = local, admin才有作用
+        if(!GenericValidator.isBlankOrNull(mode) && mode.equals(TurnkeyConstant.LOCAL) && isAdmin){
+            return true;
+        }
+        return false;
+    }
+    
+    /**
+     * 取得使用者帳號
+     * @return
+     */
+    public static String getUserId(){
+        return userId;
+    }
+    
+    /**
+     * 是否具有管理者
+     * @return
+     */
+    public static boolean isAdmin(){
+        return isAdmin;
+    }
+}

@@ -1,0 +1,317 @@
+package com.tradevan.gateway.client.task.others;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.List;
+import javax.mail.internet.MimeUtility;
+import org.apache.commons.validator.GenericValidator;
+
+import com.tradevan.gateway.client.dao.bean.TurnkeySysEventLog;
+import com.tradevan.gateway.client.dao.service.TurnkeySysEventService;
+import com.tradevan.gateway.client.log.GatewayLoggerHandler;
+import com.tradevan.gateway.client.util.TurnkeyConfig;
+import com.tradevan.gateway.client.util.TurnkeyLogger;
+import com.tradevan.gateway.client.util.TurnkeyNoticeConfig;
+import com.tradevan.gateway.client.util.TurnkeyUtil;
+import com.tradevan.notice.AttachableMessage;
+import com.tradevan.notice.MailNoticeTarget;
+import com.tradevan.notice.NoticeFactory;
+import com.tradevan.notice.accept.NoticeAccepter;
+import com.tradevan.taurus.xdao.XdaoException;
+public class MailProcessor {
+	private static NoticeFactory factory = null;
+	private static NoticeAccepter accepter = null;
+	private static TurnkeyNoticeConfig config = null;
+	private int alertTime=10;
+	private int alertRegion=10;
+    private static GatewayLoggerHandler logger=TurnkeyLogger.getMailLogger();
+    
+
+	public int getAlertTime() {
+		return alertTime;
+	}
+	public void setAlertTime(int alertTime) {
+		this.alertTime = alertTime;
+	}
+	public int getAlertRegion() {
+		return alertRegion;
+	}
+	public void setAlertRegion(int alertRegion) {
+		this.alertRegion = alertRegion;
+	}
+	public void sendMonitorShutMail()
+	{
+		String methodName="sendMonitorShutMail";
+		String hostServer=TurnkeyConfig.getUserCfg().getMailService();		
+		if(GenericValidator.isBlankOrNull(hostServer))
+		{
+			logger.error("There is no avaliable host server in config", methodName);
+			return;
+		}
+		String mailAddressString=TurnkeyConfig.getUserCfg().getEmailAddress();
+		if(GenericValidator.isBlankOrNull(mailAddressString))
+		{
+			logger.error("There is no avaliable email account in config", methodName);
+			return;
+		}
+		List<String> receiverAddressList = splitAddress(mailAddressString);
+	
+		String from=null;
+		String to=null;
+		if(receiverAddressList.size()==0)
+		{
+			logger.error("There is no avaliable email account in config", methodName);
+		}
+		else
+		{
+		    List<String> senderAddressList = null;
+		    if(!GenericValidator.isBlankOrNull(TurnkeyConfig.getUserCfg().getMailSenderAddress())){
+		        senderAddressList = splitAddress(TurnkeyConfig.getUserCfg().getMailSenderAddress());
+		    }
+		    if(senderAddressList != null && senderAddressList.size() > 0){
+		        from = senderAddressList.get(0);
+		    }else{
+		        from=receiverAddressList.get(0);
+		    }
+			to=receiverAddressList.get(0);
+			receiverAddressList.remove(0);
+		}
+		StringBuffer messageContent = new StringBuffer();
+		// 加預設文字
+		if(TurnkeyConfig.getUserCfg().getMailDefaultText() && !GenericValidator.isBlankOrNull(TurnkeyConfig.getUserCfg().getMailOnMonitorErr())){
+		    messageContent.append(TurnkeyConfig.getUserCfg().getMailOnMonitorErr() + "<BR>");
+		}
+		messageContent.append(TurnkeyUtil.getMessage("Shutdown_Monitor_Mail_Subject"));
+		sendMail(TurnkeyUtil.getMessage("Shutdown_Monitor_Mail_Contnet"), from, to,receiverAddressList, messageContent.toString(),null,hostServer);
+	}
+	public void sendShutMail()
+	{
+		String methodName="sendShutMail";
+		String hostServer=TurnkeyConfig.getUserCfg().getMailService();		
+		if(GenericValidator.isBlankOrNull(hostServer))
+		{
+			logger.error("There is no avaliable host server in config", methodName);
+			return;
+		}
+		String mailAddressString=TurnkeyConfig.getUserCfg().getEmailAddress();
+		if(GenericValidator.isBlankOrNull(mailAddressString))
+		{
+			logger.error("There is no avaliable email account in config", methodName);
+			return;
+		}
+		List<String> receiverAddressList = splitAddress(mailAddressString);
+	
+		String from=null;
+		String to=null;
+		if(receiverAddressList.size()==0)
+		{
+			logger.error("There is no avaliable email account in config", methodName);
+		}
+		else
+		{
+		    List<String> senderAddressList = null;
+		    if(!GenericValidator.isBlankOrNull(TurnkeyConfig.getUserCfg().getMailSenderAddress())){
+		        senderAddressList = splitAddress(TurnkeyConfig.getUserCfg().getMailSenderAddress());
+		    }
+		    if(senderAddressList != null && senderAddressList.size() > 0){
+		        from = senderAddressList.get(0);
+		    }else{
+		        from=receiverAddressList.get(0);
+		    }
+			to=receiverAddressList.get(0);
+			receiverAddressList.remove(0);
+		}
+		StringBuffer messageContent = new StringBuffer();
+		// 加預設文字
+		if(TurnkeyConfig.getUserCfg().getMailDefaultText() && !GenericValidator.isBlankOrNull(TurnkeyConfig.getUserCfg().getMailOnExit())){
+		    messageContent.append(TurnkeyConfig.getUserCfg().getMailOnExit() + "<BR>");
+		}
+		messageContent.append(TurnkeyUtil.getMessage("Shutdown_Mail_Contnet"));
+		sendMail(TurnkeyUtil.getMessage("Shutdown_Mail_Subject"), from, to,receiverAddressList, messageContent.toString(),null,hostServer);
+	}
+	
+	/**
+	 * 切割郵件地址
+	 * @param mailAddressString
+	 * @return
+	 */
+	private List<String> splitAddress(String mailAddressString) {
+        List<String> addressList = new ArrayList<String>();
+        String[] addressDividedBySemicolon = mailAddressString.split(";");
+        for (String subStringS : addressDividedBySemicolon) {
+            String[] addressDividedByComma = subStringS.split(",");
+            for (String subStringC : addressDividedByComma)
+                addressList.add(subStringC);
+        }
+        return addressList;
+    }
+	
+	public void sendAlertMail(String title, String messageContent) 
+    {
+	    String methodName="sendAlertMail";
+        String hostServer=TurnkeyConfig.getUserCfg().getMailService();      
+        if(GenericValidator.isBlankOrNull(hostServer))
+        {
+            logger.error("There is no avaliable host server in config", methodName);
+            return;
+        }
+        String mailAddressString=TurnkeyConfig.getUserCfg().getEmailAddress();
+        if(GenericValidator.isBlankOrNull(mailAddressString))
+        {
+            logger.error("There is no avaliable email account in config", methodName);
+            return;
+        }
+        List<String> receiverAddressList = splitAddress(mailAddressString);
+        String from=null;
+        String to=null;
+        if(receiverAddressList.size()==0)
+        {
+            logger.error("There is no avaliable email account in config", methodName);
+        }
+        else
+        {
+
+            List<String> senderAddressList = null;
+            if(!GenericValidator.isBlankOrNull(TurnkeyConfig.getUserCfg().getMailSenderAddress())){
+                senderAddressList = splitAddress(TurnkeyConfig.getUserCfg().getMailSenderAddress());
+            }
+            if(senderAddressList != null && senderAddressList.size() > 0){
+                from = senderAddressList.get(0);
+            }else{
+                from=receiverAddressList.get(0);
+            }
+            to=receiverAddressList.get(0);
+            receiverAddressList.remove(0);
+        }
+       
+        if(GenericValidator.isBlankOrNull(messageContent))
+        {
+            logger.info("No event to sent", methodName);
+            return;
+        }
+        sendMail(title, from, to,receiverAddressList, messageContent,null,hostServer);
+    }
+	
+	public void sendAlertMail() 
+    {
+	    String methodName="sendAlertMail";
+	    try
+        {
+            String messageContent = getAlertMessage();
+            if(GenericValidator.isBlankOrNull(messageContent))
+            {
+                logger.info("No event to sent", methodName);
+                return;
+            }
+            sendAlertMail(TurnkeyUtil.getMessage("Mail_Subject"), messageContent);
+        }catch(XdaoException e)
+        {
+            logger.error("XdaoException: "+e.getMessage(),e, methodName);
+            return;
+        }
+    }
+	private  String getAlertMessage() throws XdaoException
+	{
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
+		GregorianCalendar cal = (GregorianCalendar) GregorianCalendar.getInstance ();
+		cal.add(GregorianCalendar.MINUTE, alertTime*-1);
+		Date endDate=cal.getTime();
+		String endDateString=dateFormat.format(endDate);
+		cal.add(GregorianCalendar.MINUTE, alertRegion*-1);
+		Date startDate=cal.getTime();
+		String startDateString=dateFormat.format(startDate);
+		List<TurnkeySysEventLog>eventList=TurnkeySysEventService.INSTANCE.queryTurnkeySysEventLog(new TurnkeySysEventLog(), startDateString, endDateString, -1);
+		if(eventList==null||eventList.size()==0)
+			return null;
+		StringBuilder sb=new StringBuilder();
+		// 加預設文字
+        if(TurnkeyConfig.getUserCfg().getMailDefaultText() && !GenericValidator.isBlankOrNull(TurnkeyConfig.getUserCfg().getMailOnSystemEvent())){
+            sb.append(TurnkeyConfig.getUserCfg().getMailOnSystemEvent() + "<BR>");
+        }
+		sb.append("<table border=1>");
+		sb.append("<TR><TD>" +TurnkeyUtil.getMessage("EventDts")+"</TD><TD>"+TurnkeyUtil.getMessage("ErrorCode")+"</TD><TD>"+TurnkeyUtil.getMessage("Message")+"</TD></TR>");
+		for(TurnkeySysEventLog event:eventList)
+		{
+			sb.append("<TR><TD>");
+			sb.append(event.getEventdts());
+			sb.append("</TD><TD>");
+			sb.append(event.getErrorcode());
+			sb.append("</TD><TD>");
+			sb.append(TurnkeyUtil.getSysEventMsg(event)); // 2012.01.09 修改,顯示所有錯誤訊息
+			sb.append("</TD></TR>");
+		}
+		sb.append("</table>");
+		return sb.toString();
+	}
+    private static void sendMail(String subject, String from, String to,List<String> cc,
+			String content, List attach,String hostServer) {
+    	String methodName="sendMail";
+            try {
+		if (config == null) {
+			String pkg=TurnkeyUtil.class.getPackage().getName();
+			pkg=pkg.replaceAll("[.]", "/");
+//			config = new TurnkeyNoticeConfig("conf/notification.xml");
+			config = new TurnkeyNoticeConfig("conf/notification2.xml");
+		}
+		config.setSmtpHost(hostServer);
+		config.setSenderMail(from);		
+		if(TurnkeyConfig.getUserCfg().getMailAuth()){
+		    config.setAuthUser(TurnkeyConfig.getUserCfg().getMailAccount());
+		    config.setAuthPassword(TurnkeyConfig.getUserCfg().getMailPassword());
+		}
+		logger.info("hostServer-->"+hostServer,methodName);
+		logger.info(config.getHandlerProperties("mailHandler").toString(),methodName);
+		logger.info(config.getHandlerProperties("mailHandler").get("smtp-host").toString(),methodName);
+		factory = new NoticeFactory(config);
+		factory.getRepository("memRepository");
+		accepter = factory.getAccepter("memAccepter");
+		
+		logger.info("Begin mail...",methodName);
+		System.setProperty("mail.mime.charset", "UTF-8");
+		logger.info("Mail To-->" + to,methodName);
+		logger.info("Mail cc-->" + cc,methodName);
+		logger.info("Mail Subject-->" + subject,methodName);
+		logger.info("Mail Content-->" + content,methodName);
+		content=content.replaceAll("\n", "<br>\n");
+		factory.getRepository("memRepository");
+		MailNoticeTarget target = new MailNoticeTarget(to);
+		for(String ccAddress:cc)
+			target.addCcReceiver(ccAddress);
+		String encodedSubject=subject;
+		if ((subject != null) && (subject.length() > 0)) {
+			try {
+				encodedSubject = MimeUtility.encodeText(subject, "utf-8", null);
+			} catch (Exception e) {
+				encodedSubject = subject;
+			}
+		}
+
+		AttachableMessage message = new AttachableMessage(target, content);
+		message.setContentType("text/html;charset=UTF-8");
+		message.setTitle(encodedSubject);
+
+		String attahementTmp = null;
+		if(attach!=null && attach.size()>0) {
+			for (int i = 0; i < attach.size(); i++) {
+				attahementTmp = (String) attach.get(i);
+				logger.info("Attachement:["+attahementTmp+"]",methodName);
+				if (attahementTmp != null && !attahementTmp.equals("")) {
+					logger.info("attachment-->"+attahementTmp,methodName);
+					message.attache(attahementTmp);
+				}
+
+			}
+		}
+
+		logger.info("check============================",methodName);
+		logger.info(message.getMessage(),methodName);
+		logger.info("check============================",methodName);
+		accepter.process(message);
+        } catch (Exception e) {
+            e.printStackTrace();
+            logger.error("Sent mail failed: "+e.getMessage(), methodName);
+        }
+    }
+}

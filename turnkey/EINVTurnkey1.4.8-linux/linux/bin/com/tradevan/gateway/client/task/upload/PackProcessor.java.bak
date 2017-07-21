@@ -1,0 +1,646 @@
+package com.tradevan.gateway.client.task.upload;
+
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.validator.GenericValidator;
+
+import com.tradevan.commons.io.FileUtil;
+import com.tradevan.gateway.client.connector.ConnectorException;
+import com.tradevan.gateway.client.dao.bean.FromConfig;
+import com.tradevan.gateway.client.dao.bean.SignConfig;
+import com.tradevan.gateway.client.dao.bean.ToConfig;
+import com.tradevan.gateway.client.dao.bean.TurnkeyMessageLog;
+import com.tradevan.gateway.client.dao.service.FromConfigService;
+import com.tradevan.gateway.client.dao.service.SignConfigService;
+import com.tradevan.gateway.client.dao.service.ToConfigService;
+import com.tradevan.gateway.client.dao.service.TurnkeyMessageLogService;
+import com.tradevan.gateway.client.dao.service.TurnkeySequenceService;
+import com.tradevan.gateway.client.einv.parse.ParserException;
+import com.tradevan.gateway.client.einv.parse.ParserHelper;
+import com.tradevan.gateway.client.einv.sign.SignPayloadException;
+import com.tradevan.gateway.client.einv.sign.SignPayloadHelper;
+import com.tradevan.gateway.client.einv.sign.proc.SignType;
+import com.tradevan.gateway.client.einv.transport.CategoryType;
+import com.tradevan.gateway.client.einv.transport.ProcessType;
+import com.tradevan.gateway.client.einv.util.EncodingType;
+import com.tradevan.gateway.client.exception.TurnkeyException;
+import com.tradevan.gateway.client.task.Processor;
+import com.tradevan.gateway.client.task.ToConfigHandler;
+import com.tradevan.gateway.client.task.info.PackProcessInfo;
+import com.tradevan.gateway.client.task.info.ProcPackInfo;
+import com.tradevan.gateway.client.util.EnvelopeMakeFactory;
+import com.tradevan.gateway.client.util.MessageIdentifier;
+import com.tradevan.gateway.client.util.TaskEnum;
+import com.tradevan.gateway.client.util.TurnkeyConfig;
+import com.tradevan.gateway.client.util.TurnkeyConstant;
+import com.tradevan.gateway.client.util.TurnkeyLogger;
+import com.tradevan.gateway.client.util.TurnkeyLoggerHandler;
+import com.tradevan.gateway.client.util.TurnkeyUtil;
+import com.tradevan.gateway.einv.msg.EINVEnvelope;
+import com.tradevan.taurus.xdao.XdaoException;
+
+/**
+ * 負責打包(壓封套)兼簽章工作
+ * 
+ * @author 2775
+ * 
+ */
+public class PackProcessor extends Processor {
+    public static final String TASK = "PAC_M0001";
+    private ParserHelper parserHelper = null;
+    private SignPayloadHelper signPayloadHelper = null;
+    private final String PARTITIONSTRING = "/>";
+    private TurnkeyLoggerHandler logger = TurnkeyLogger.getLogger();
+
+    public void setParserHelper(ParserHelper parserHelper) {
+        this.parserHelper = parserHelper;
+    }
+
+    public void setSignPayloadHelper(SignPayloadHelper signPayloadHelper) {
+        this.signPayloadHelper = signPayloadHelper;
+    }
+
+    private void init() {
+        if (parserHelper == null)
+            parserHelper = new ParserHelper();
+        if (signPayloadHelper == null)
+            signPayloadHelper = new SignPayloadHelper();
+    }
+
+    public void process(ProcPackInfo info) throws XdaoException, IOException, SignPayloadException {
+        String methodName = "process";
+        init();
+        try {
+            chkProcPackInfo(info);// 檢查Info資訊是否足夠
+        } catch (TurnkeyException t) {
+            logger.showConsoleError_TaskInfoError(TASK, t, methodName);
+            logger.error("chkProcPackInfo occur Exception ", t, methodName);
+            TurnkeyUtil.insertSysEvent(methodName, null, null, null, t,
+                    TurnkeyConstant.ErrorCodeEnum.CONFIG.getValue(), this.getClass().getName(), this.getClass()
+                            .getPackage().getName(), "Sys007");
+            return;
+        }
+        // 掃檔前先lock PackProcessor.TASK
+        File[] listFiles = null;
+        synchronized (TASK) {
+            listFiles = TurnkeyUtil.sortFileNameByLastModifiedTime(info.getSrcPath());
+        }
+
+        if (listFiles == null)// 若Src目錄下為空則跳過
+            return;
+        
+        boolean hasFile = false;
+        while (listFiles != null && listFiles.length > 0) {
+            Set<File> dir = new HashSet<File>();
+            hasFile = false; //歸位
+            for (File file : listFiles) {
+                if (file.isDirectory()){
+                    dir.add(file);
+                    continue;
+                }
+                if (Processor.isInterruptFlag())
+                    break;
+                
+                //針對windows 嘗試rename  確認檔案未被lock
+                if(TurnkeyUtil.isWindows() && !file.renameTo(file)){
+                    logger.info("file can not rename, escape", methodName);
+                    continue;
+                }
+                
+                logger.info("Now Processing file:" + file.getName(), methodName);
+                logger.showConsoleInfo_ProcFile(TASK, file, methodName);
+                
+                //檔名資訊
+                String fromPartyId = null;
+                String uuid = null;
+                boolean fromInnerFunction = false;
+                String[] fileInfo = null;
+                ToConfig toCfg = null;
+                FromConfig fromCfg = null;
+                String dts = null;
+                
+                
+                
+                try {
+
+                    fileInfo = TurnkeyUtil.getFileNameInfo(file.getName());// 由檔名取得相關資訊
+                   //Result{FromId,ToId,Version,Mig,DateTime,UUID,Count}
+                    
+                    uuid = fileInfo[5];
+                    dts = fileInfo[4].replaceAll("-", "");
+                    fromCfg = FromConfigService.INSTANCE.getFromConfigByBan(fileInfo[0]);
+                    if (!TurnkeyUtil.chkFromConfig(fromCfg))// 確認FromPartyId是否存在及內容是否合法
+                    {
+                        logger.showConsoleError(TASK,
+                                TurnkeyUtil.getMessage("CanNotFindSenderPartyId") + TurnkeyUtil.getMessage("UTL_M0025")
+                                        + fromCfg, methodName);
+                        fromCfg = null;
+                        throw new TurnkeyException("From PartyId(" + fileInfo[0]
+                                + ") is no found or FromConfig is invaild");
+                    }
+                    fromPartyId = fileInfo[0];
+
+                    // 在B2B交換情況下
+                    // 確認ToPartyId是否確實存在
+                    if (CategoryType.B2B.equals(info.getCategoryType())
+                            && ProcessType.EXCHANGE.equals(info.getProcessType())) {
+                        toCfg = ToConfigService.INSTANCE.queryByPartyId(fileInfo[1]);
+                        if (!TurnkeyUtil.chkToConfig(toCfg)) {
+                            if (!ToConfigHandler.checkWSToInsertToCfg(fileInfo[1])) {
+                                logger.showConsoleError(TASK,
+                                        TurnkeyUtil.getMessage("UTL_M0024") + TurnkeyUtil.getMessage("UTL_M0025")
+                                                + fromCfg, methodName);
+                                toCfg = null;
+                                throw new TurnkeyException("To PartyId(" + fileInfo[1]
+                                        + ") is no found or ToConfig is invaild");
+                            } else {
+                                toCfg = ToConfigService.INSTANCE.queryByPartyId(fileInfo[1]);
+                            }
+                        }
+
+                    } else {// 在B2C及B2B存放情況下 將ToConfig設為特定值
+                        toCfg = new ToConfig();
+                        toCfg.setPartyId(TurnkeyConstant.INVOICE_B2C_TOPARTY_ID);
+                        toCfg.setRoutingId(TurnkeyConstant.INVOICE_B2C_TOPARTY_ROUTING_ID);
+                        toCfg.setRoutingDescription("");
+                    }
+                    SignConfig signCfg = getSignInfo(fromCfg.getPartyId());// 獲得並確認簽章資訊是否正確
+                    if (signCfg == null) {
+                        logger.showConsoleError(TASK,
+                                TurnkeyUtil.getMessage("UTL_M0026") + ": " + TurnkeyUtil.getMessage("UTL_M0026") + ": "
+                                        + fromCfg.getPartyId(), methodName);
+                        throw new TurnkeyException("SignConfig is no found");
+                    }
+                    chkSignInfo(signCfg);
+
+                    if (!file.exists()) {
+                        continue;
+                    }
+                    if (!file.canWrite()) {
+                        logger.info("invoiceFile can not write, escape..", methodName);
+                        logger.showConsoleInfo(TASK, file + " " + TurnkeyUtil.getMessage("UTL_M0011"), methodName);
+                        continue;
+                    }
+                    hasFile = true;
+                    byte[] payload = readFilePayload(file);
+                    // 利用uuid及msgDts確認紀錄是否存在 並將查詢結果存至List中
+
+                    TurnkeyMessageLog predicate = new TurnkeyMessageLog();
+                    predicate.setUuid(fileInfo[5]);
+                    predicate.setMessageDts(fileInfo[4].replaceAll("-", ""));
+                    List<TurnkeyMessageLog> resultList = getMessageLogList(fileInfo, info, fromCfg, toCfg,
+                            payload.length);
+                    try {
+                        processPayload(payload, fileInfo, info, fromCfg, toCfg, resultList, file, signCfg);
+                    } catch (XdaoException t) {
+                        fromInnerFunction = true;
+                        throw t;
+                    } catch (IOException t) {
+                        fromInnerFunction = true;
+                        throw t;
+                    } catch (SignPayloadException t) {
+                        fromInnerFunction = true;
+                        throw t;
+                    }
+                } catch (TurnkeyException t) {
+                    logger.showConsoleError(TASK, TurnkeyUtil.getMessage("UTL_M0017"), t, methodName);
+                    logger.error("chk File Name occur Exception", t, methodName);
+                    TurnkeyUtil.insertSysEvent(methodName, fromPartyId, uuid, t,
+                            TurnkeyConstant.ErrorCodeEnum.FILE_NAME_FORMAT.getValue(), this.getClass().getName(), this
+                                    .getClass().getPackage().getName(), "UTL_M0017");
+                    String path = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getErrPath(), null, true);
+                    logger.showConsoleError_MoveToErr(TASK, file, new File(path + File.separator + file.getName()),
+                            methodName);
+                    if (fileInfo != null) {
+                        List<TurnkeyMessageLog> msgLogList = getMessageLogList(fileInfo, info, fromCfg, toCfg,
+                                file.length());
+                        TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                                TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack, path + File.separator + file.getName(),
+                                dts, uuid, info.getProcessType());
+                    }
+                } catch (FileNotFoundException t) {
+                    logger.error("Can not get the file payload, File name: " + file.getName(), t, methodName);
+                    logger.showConsoleError(TASK, TurnkeyUtil.getMessage("UTL_M0021") + file.getName(), t, methodName);
+
+                    TurnkeyUtil.insertSysEvent(methodName, fromPartyId, uuid, t,
+                            TurnkeyConstant.ErrorCodeEnum.IO.getValue(), this.getClass().getName(), this.getClass()
+                                    .getPackage().getName(), "Sys005");
+                    if (fileInfo != null) {
+                        List<TurnkeyMessageLog> msgLogList = getMessageLogList(fileInfo, info, fromCfg, toCfg,
+                                file.length());
+                        TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                                TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack, file.getAbsolutePath(), dts, uuid,
+                                info.getProcessType());
+                    }
+                } catch (SignPayloadException t) {
+                    logger.showConsoleError(TASK, t, methodName);
+                    if (!fromInnerFunction) {
+                        logger.error("SignPayloadException occured", t, methodName);
+                        TurnkeyUtil.insertSysEvent(methodName, fromPartyId, uuid, t,
+                                TurnkeyConstant.ErrorCodeEnum.SIGN.getValue(), this.getClass().getName(), this
+                                        .getClass().getPackage().getName(), "Sys010");
+                        if (fileInfo != null) {
+                            List<TurnkeyMessageLog> msgLogList = getMessageLogList(fileInfo, info, fromCfg, toCfg,
+                                    file.length());
+                            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                                    TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack, file.getAbsolutePath(), dts, uuid,
+                                    info.getProcessType());
+                        }
+                    }
+                    throw t;
+                } catch (IOException t) {
+                    logger.showConsoleError_IO(TASK, t, methodName);
+                    if (!fromInnerFunction) {
+                        logger.error("IOException occured", t, methodName);
+                        TurnkeyUtil.insertSysEvent(methodName, fromPartyId, uuid, t,
+                                TurnkeyConstant.ErrorCodeEnum.IO.getValue(), this.getClass().getName(), this.getClass()
+                                        .getPackage().getName(), "Sys005");
+                        if (fileInfo != null) {
+                            List<TurnkeyMessageLog> msgLogList = getMessageLogList(fileInfo, info, fromCfg, toCfg,
+                                    file.length());
+                            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                                    TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack, file.getAbsolutePath(), dts, uuid,
+                                    info.getProcessType());
+                        }
+                    }
+                    if (!(t instanceof FileNotFoundException))
+                        throw t;
+                } catch (XdaoException t) {
+                    logger.showConsoleError_Xdao(TASK, t, methodName);
+                    if (!fromInnerFunction) {
+                        logger.error("XdaoException", t, methodName);
+                        try {
+                            TurnkeyUtil.chkDBConnectionReset(t);
+                        } catch (XdaoException e) {
+                            throw t;
+                        }
+                        TurnkeyUtil.insertSysEvent(methodName, fromPartyId, uuid, t,
+                                TurnkeyConstant.ErrorCodeEnum.DB.getValue(), this.getClass().getName(), this.getClass()
+                                        .getPackage().getName(), "Sys006");
+                        String path = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getErrPath(), null, true);
+                        logger.info("move file:" + file.getName() + " to error dir, file path=" + path + File.separator
+                                + file.getName(), methodName);
+                        logger.showConsoleError_MoveToErr(TASK, file, new File(path + File.separator + file.getName()),
+                                methodName);
+                        if (fileInfo != null) {
+                            List<TurnkeyMessageLog> msgLogList = getMessageLogList(fileInfo, info, fromCfg, toCfg,
+                                    file.length());
+                            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                                    TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack,
+                                    path + File.separator + file.getName(), dts, uuid, info.getProcessType());
+                        }
+                    } else
+                        throw t;
+                } catch (ConnectorException t) {
+                    logger.showConsoleError(TASK, TurnkeyUtil.getMessage("UTL_M0058"), t, methodName);
+                    logger.error("qryVAC occur ConnectorException", t, methodName);
+                    TurnkeyUtil.insertSysEvent(methodName, null, uuid, t,
+                            TurnkeyConstant.ErrorCodeEnum.CONNECTION_FAIL.getValue(), this.getClass().getName(), this
+                                    .getClass().getPackage().getName(), "Sys012");
+                }
+            }
+            if (Processor.isInterruptFlag())
+                break;
+            if(!Processor.isCallByDirect() && hasFile){
+                try{
+                    Thread.sleep(15*1000);//所有檔案掃完，睡十五秒，在重新掃描一次看是否有新的檔案需要處理
+                }catch(InterruptedException e)
+                {
+                    
+                }           
+            }
+            if(listFiles.length==dir.size()){
+                break;
+            }
+            synchronized (TASK) {
+                listFiles = TurnkeyUtil.sortFileNameByLastModifiedTime(info.getSrcPath());
+            }
+        }
+    }
+
+    private void processPayload(byte[] payload, String[] fileInfo, ProcPackInfo info, FromConfig fromCfg,
+            ToConfig toCfg, List<TurnkeyMessageLog> msgLogList, File file, SignConfig signCfg) throws XdaoException,
+            IOException, SignPayloadException {
+        String methodName = "processPayload";
+        // 利用info、檔名等資訊兜出PackProcessInfo
+        PackProcessInfo packInfo = new PackProcessInfo();
+        packInfo.setFileName(file.getName());
+        packInfo.setFromBan(fromCfg.getPartyId());
+        packInfo.setFromBanDescription(fromCfg.getPartyDescription());
+        packInfo.setFromVacDescription(fromCfg.getRoutingDescription());
+        packInfo.setFromVacId(fromCfg.getRoutingId());
+        packInfo.setMig(fileInfo[3]);
+        packInfo.setToBan(toCfg.getPartyId());
+        packInfo.setToBanDescription(toCfg.getPartyDescription());
+        packInfo.setToVacId(toCfg.getRoutingId());
+        packInfo.setToVacDescription(toCfg.getRoutingDescription());
+        EINVEnvelope envelope = EnvelopeMakeFactory.getLastEnvelope(packInfo);
+        envelope.setCount(Integer.parseInt(fileInfo[6]));
+        envelope.setMessageType(fileInfo[3]);
+        envelope.setVersion(fileInfo[2]);
+        String uuid = fileInfo[5];
+        String dts = fileInfo[4].replaceAll("-", "");
+        try {
+            String onlyEnvelopeString = parserHelper.marshalToXML(envelope);// 將封套InvoicePack以外的部份寫出成XML
+            String envelopeWithPayloadString = combinePayload(onlyEnvelopeString, payload);// 將上一步驟轉出的XML和InvoicePack的內容合併
+
+            if (envelopeWithPayloadString == null) {
+                logger.showConsoleError(TASK, TurnkeyUtil.getMessage("UTL_M0043") + file, methodName);
+                throw new TurnkeyException("Envelope payload invaild");
+            }
+
+            logger.info("sign file:" + file.getName() + " now", methodName);
+            logger.showConsoleInfo(TASK, TurnkeyUtil.getMessage("UTL_M0042") + file, methodName);
+
+            String signedPayload = signPayloadHelper.sign(signCfg.getSignType(), signCfg.getSignPayloadInfo(),
+                    envelopeWithPayloadString.getBytes(EncodingType.UTF8.getValue()), signCfg.getCardType());// 加簽
+            File procFile = new File(info.getProcPath() + File.separator + file.getName());
+            FileUtil.write(procFile, signedPayload.getBytes(EncodingType.UTF8.getValue()));
+            File targetDir = new File(info.getTargetPath() + File.separator + TurnkeyConstant.SRC);
+            if (!targetDir.exists())
+                targetDir.mkdirs();
+            File targetFile = new File(targetDir.getAbsolutePath() + File.separator + procFile.getName());
+            if (targetFile.exists()) {
+                logger.error("TargetFile:" + targetFile.getAbsolutePath() + " already existed!", methodName);
+                IOException t = new IOException("TargetFile:" + targetFile.getAbsolutePath() + " already existed!");
+                TurnkeyUtil.insertSysEvent(methodName, fromCfg.getPartyId(), fileInfo[5], t,
+                        TurnkeyConstant.ErrorCodeEnum.IO.getValue(), this.getClass().getName(), this.getClass()
+                                .getPackage().getName(), "Sys009");
+                // String path=TurnkeyUtil.moveFileToFolderWithDayTime(file,
+                // info.getErrPath(), null, true);
+                TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                        TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack, file.getAbsolutePath(), dts, uuid,
+                        info.getProcessType());
+                throw t;
+            } else {
+                // 搬檔前先lock SendFileProcessor.TASK
+                synchronized (SendFileProcessor.TASK) {
+                    logger.showConsoleInfo_MoveToTarget(TASK, procFile,
+                            new File(targetDir + File.separator + procFile.getName()), methodName);
+                    FileUtil.move(procFile, targetDir);
+                }
+            }
+            if (TurnkeyConfig.getUserCfg().isBackupFile()) {
+                logger.info("Make target file:" + targetDir.getAbsolutePath() + File.separator + procFile.getName(),
+                        methodName);
+                String bakDir = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getBakPath(), null, true);
+                logger.showConsoleInfo_MoveToBAK(TASK, file, new File(bakDir + File.separator + file.getName()),
+                        methodName);
+                TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                        TurnkeyConstant.STATUS_SUCCESS, TaskEnum.Pack, bakDir + File.separator + file.getName(), dts,
+                        uuid, info.getProcessType());// 完成後更新DB狀態
+            } else {
+                logger.info("The Switch of Pack Task's Backup is off, turnkey does not backup the source file.",
+                        methodName);
+                logger.showConsoleInfo(TASK, TurnkeyUtil.getMessage("PAC_M0002") + file.getAbsolutePath(), methodName);
+                logger.info("Delete source file: " + file.getAbsolutePath(), methodName);
+                FileUtil.delete(file.getAbsolutePath());
+                TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                        TurnkeyConstant.STATUS_SUCCESS, TaskEnum.Pack, null, dts, uuid, info.getProcessType());// 完成後更新DB狀態,但不備分所以路徑留空
+            }
+        } catch (ParserException t) {
+            logger.error("ParserException occured", t, methodName);
+            logger.showConsoleError(UpCastProcessor.TASK, TurnkeyUtil.getMessage("UTL_M0019") + file, t, methodName);
+            TurnkeyUtil.insertSysEvent(methodName, fromCfg.getPartyId(), fileInfo[5], t,
+                    TurnkeyConstant.ErrorCodeEnum.INVOICE_INVAILD.getValue(), this.getClass().getName(), this
+                            .getClass().getPackage().getName(), "Sys002");
+
+            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList, TurnkeyConstant.STATUS_ERROR,
+                    TaskEnum.Pack, info.getErrPath() + File.separator + file.getName(), dts, uuid,
+                    info.getProcessType());
+
+            String filePath = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getErrPath(), null, true);
+            logger.info("move file:" + file.getName() + " to error directory, file path=" + filePath + File.separator
+                    + file.getName(), methodName);
+            logger.showConsoleError_MoveToErr(TASK, file, new File(filePath + File.separator + file.getName()),
+                    methodName);
+        } catch (SignPayloadException t) {
+            logger.showConsoleError(UpCastProcessor.TASK, TurnkeyUtil.getMessage("UTL_M0044") + file, t, methodName);
+            logger.error("Sign payload invaild", t, methodName);
+            TurnkeyUtil.insertSysEvent(methodName, fromCfg.getPartyId(), fileInfo[5], t,
+                    TurnkeyConstant.ErrorCodeEnum.SIGN.getValue(), this.getClass().getName(), this.getClass()
+                            .getPackage().getName(), "Sys010");
+            if (signCfg.getSignType().equals(SignType.Card)) {
+                TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                        TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack, file.getAbsolutePath(), dts, uuid,
+                        info.getProcessType());
+
+                throw t;
+            } else {
+                TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList,
+                        TurnkeyConstant.STATUS_ERROR, TaskEnum.Pack,
+                        info.getErrPath() + File.separator + file.getName(), dts, uuid, info.getProcessType());
+            }
+            String filePath = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getErrPath(), null, true);
+            logger.info("move file:" + file.getName() + " to error directory, file path=" + filePath + File.separator
+                    + file.getName(), methodName);
+            logger.showConsoleError_MoveToErr(TASK, file, new File(filePath + File.separator + file.getName()),
+                    methodName);
+
+        } catch (IOException t) {
+            logger.error("IO Exception", t, methodName);
+            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList, TurnkeyConstant.STATUS_ERROR,
+                    TaskEnum.Pack, file.getAbsolutePath(), dts, uuid, info.getProcessType());
+            TurnkeyUtil.insertSysEvent(methodName, fromCfg.getPartyId(), fileInfo[5], t,
+                    TurnkeyConstant.ErrorCodeEnum.IO.getValue(), this.getClass().getName(), this.getClass()
+                            .getPackage().getName(), "Sys005");
+            throw t;
+        } catch (XdaoException t) {
+            logger.error("XdaoException", t, methodName);
+            try {
+                TurnkeyUtil.chkDBConnectionReset(t);
+            } catch (XdaoException e) {
+                throw t;
+            }
+            String path = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getErrPath(), null, true);
+            logger.showConsoleError_MoveToErr(TASK, file, new File(path + File.separator + file.getName()), methodName);
+            TurnkeyUtil.insertSysEvent(methodName, fromCfg.getPartyId(), fileInfo[5], t,
+                    TurnkeyConstant.ErrorCodeEnum.DB.getValue(), this.getClass().getName(), this.getClass()
+                            .getPackage().getName(), "Sys006");
+            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList, TurnkeyConstant.STATUS_ERROR,
+                    TaskEnum.Pack, path + File.separator + file.getName(), dts, uuid, info.getProcessType());
+        } catch (TurnkeyException t) {
+            logger.error("Envelope payload invaild", t, methodName);
+
+            TurnkeyUtil.insertSysEvent(methodName, fromCfg.getPartyId(), fileInfo[5], t,
+                    TurnkeyConstant.ErrorCodeEnum.DB.getValue(), this.getClass().getName(), this.getClass()
+                            .getPackage().getName(), "Sys011");
+
+            TurnkeyMessageLogService.INSTANCE.updMessageLogAndDetailInList(msgLogList, TurnkeyConstant.STATUS_ERROR,
+                    TaskEnum.Pack, info.getErrPath() + File.separator + file.getName(), dts, uuid,
+                    info.getProcessType());
+
+            String filePath = TurnkeyUtil.moveFileToFolderWithDayTime(file, info.getErrPath(), null, true);
+            logger.info("move file:" + file.getName() + " to error directory, file path=" + filePath + File.separator
+                    + file.getName(), methodName);
+            logger.showConsoleError_MoveToErr(TASK, file, new File(filePath + File.separator + file.getName()),
+                    methodName);
+        }
+    }
+
+    // 組合封套內容及InvoicePack的內容
+    private String combinePayload(String envelopeString, byte[] payload) {
+        Pattern pattern = Pattern.compile("/>[\r\n ]*</InvoiceEnvelope>");
+        Matcher matcher = pattern.matcher(envelopeString);
+
+        if (matcher.find()) {
+            StringBuilder sb = new StringBuilder();
+            int indexOfPartition = envelopeString.lastIndexOf(PARTITIONSTRING);
+            sb.append(envelopeString.substring(0, indexOfPartition));
+            sb.append(">");
+            try {
+                sb.append(new String(payload, EncodingType.UTF8.getValue()));
+            } catch (UnsupportedEncodingException e) {
+                sb.append(new String(payload));
+            }
+            sb.append("\n</InvoicePack>");
+            sb.append(envelopeString.substring(indexOfPartition + 2));
+            return sb.toString();
+        } else
+            return null;
+    }
+
+    private byte[] readFilePayload(File file) throws FileNotFoundException, IOException {
+        FileInputStream fis = null;
+        BufferedInputStream bis = null;
+        ByteArrayOutputStream baos = null;
+        BufferedOutputStream bos = null;
+        try {
+            fis = new FileInputStream(file);
+            bis = new BufferedInputStream(fis);
+            baos = new ByteArrayOutputStream();
+            bos = new BufferedOutputStream(baos);
+            byte[] data = new byte[4096];
+            int iRead = 0;
+            while ((iRead = bis.read(data)) > 0) {
+                if (bis.available() <= 0) {
+                    byte[] finData = new byte[iRead];
+                    System.arraycopy(data, 0, finData, 0, iRead);
+                    bos.write(finData);
+                } else
+                    bos.write(data);
+            }
+            bos.flush();
+            bos.close();
+        } finally {
+            if (bos != null) {
+                bos.close();
+            }
+            if (baos != null) {
+                baos.close();
+            }
+            if (bis != null) {
+                bis.close();
+            }
+            if (fis != null) {
+                fis.close();
+            }
+        }
+        return baos.toByteArray();
+    }
+
+    // 檢查簽章設定
+    private void chkSignInfo(SignConfig sinfo) throws TurnkeyException {
+        if (GenericValidator.isBlankOrNull(sinfo.getSignPassword()))
+            throw new TurnkeyException("Sign password is null" + sinfo.getSignId());
+
+        switch (sinfo.getSignType()) {
+        case Card:
+            break;
+        case PFX:
+            if (sinfo.getPfxPath() == null)
+                throw new TurnkeyException("PFX path is null" + sinfo.getSignId());
+            break;
+        default:
+            throw new TurnkeyException("SignType is null" + sinfo.getSignId());
+        }
+    }
+
+    private SignConfig getSignInfo(String ban) throws XdaoException {
+        return SignConfigService.INSTANCE.getSignConfigByBan(ban);
+    }
+
+    private List<TurnkeyMessageLog> getMessageLogList(String[] fileInfo, ProcPackInfo info, FromConfig fromCfg,
+            ToConfig toCfg, long payloadSize) throws XdaoException {
+        TurnkeyMessageLog predicate = new TurnkeyMessageLog();
+        predicate.setUuid(fileInfo[5]);
+        predicate.setMessageDts(fileInfo[4].replaceAll("-", ""));
+        List<TurnkeyMessageLog> resultList = TurnkeyMessageLogService.INSTANCE.queryMessageLog(predicate);
+        if (resultList == null || resultList.size() == 0)// 在不存在的情況下
+                                                         // 新增一筆MsgLog
+                                                         // 並放入List中
+        {
+            String seqNo = TurnkeySequenceService.INSTANCE.getNextSequence();
+            MessageIdentifier messageIdentifier = new MessageIdentifier();
+            String subSeqNo = messageIdentifier.getMessageSubId(1);
+            TurnkeyMessageLog messageLog = new TurnkeyMessageLog();
+            messageLog.setSubseqno(subSeqNo);
+            messageLog.setSeqno(seqNo);
+            messageLog.setUuid(fileInfo[5]);
+            messageLog.setFromPartyId(fileInfo[0]);
+            if (fromCfg != null)
+                messageLog.setFromRoutingId(fromCfg.getRoutingId());
+            messageLog.setToPartyId(fileInfo[1]);
+            if (toCfg != null)
+                messageLog.setToRoutingId(toCfg.getRoutingId());
+            messageLog.setCategoryType(info.getCategoryType());
+            messageLog.setProcessType(info.getProcessType().getValue());
+            messageLog.setMessageType(fileInfo[3]);
+            messageLog.setMessageDts(fileInfo[4].replaceAll("-", ""));
+            messageLog.setCharacterCount(String.valueOf(payloadSize));
+            messageLog.setInOutBound(TurnkeyConstant.OUTBOUND);
+            messageLog.setStatus(TurnkeyConstant.STATUS_PROCESS);
+
+            if (CategoryType.B2B.equals(info.getCategoryType())) {
+                messageLog.setToPartyId(fileInfo[1]);
+                if (toCfg != null)
+                    messageLog.setToRoutingId(toCfg.getRoutingId());
+            } else {
+                messageLog.setToPartyId(TurnkeyConstant.INVOICE_B2C_TOPARTY_ID);
+                messageLog.setToRoutingId(TurnkeyConstant.INVOICE_B2C_TOPARTY_ROUTING_ID);
+            }
+            if (resultList == null)
+                resultList = new ArrayList<TurnkeyMessageLog>();
+            resultList.add(messageLog);
+        } else {
+            for (TurnkeyMessageLog msgLog : resultList) {
+                if (fromCfg != null)
+                    msgLog.setFromRoutingId(fromCfg.getRoutingId());
+                if (toCfg != null)
+                    msgLog.setToRoutingId(toCfg.getRoutingId());
+            }
+        }
+        return resultList;
+    }
+
+    /**
+     * 檢查Pack所需的資訊是否充足
+     * 
+     * @param info
+     * @throws Exception
+     */
+    private void chkProcPackInfo(ProcPackInfo info) throws TurnkeyException {
+        TaskEnum task = TaskEnum.Pack;
+        if (info.getSrcPath() == null)
+            throw new TurnkeyException(task.getValue() + " : source folder not set!");
+        if (info.getTargetPath() == null)
+            throw new TurnkeyException(task.getValue() + " : target folder not set!");
+        if (info.getCategoryType() == null || GenericValidator.isBlankOrNull(info.getCategoryType().getValue()))
+            throw new TurnkeyException(task.getValue() + " : value of Category Type is invaild!");
+        if (info.getProcessType() == null || GenericValidator.isBlankOrNull(info.getProcessType().getValue()))
+            throw new TurnkeyException(task.getValue() + " : value of Process Type is invaild!");
+    }
+}

@@ -1,0 +1,53 @@
+package com.tradevan.gateway.client.dao.service;
+
+import java.util.Date;
+
+import com.tradevan.gateway.client.dao.bean.TurnkeySequence;
+import com.tradevan.gateway.client.dao.model.TurnkeyDefaultModel;
+import com.tradevan.gateway.client.dao.model.TurnkeySequenceModel;
+import com.tradevan.gateway.client.util.MessageIdentifier;
+import com.tradevan.taurus.xdao.XdaoException;
+
+
+/**
+ * 連線DB，取得Sequence資訊
+ * @author 2775
+ *
+ */
+
+//2012.07.17 2775 修正SEQNO未歸0的bug
+public class TurnkeySequenceService {
+    public static final TurnkeySequenceService INSTANCE = new TurnkeySequenceService();
+    private TurnkeySequenceModel model = new TurnkeySequenceModel();
+    private TurnkeySequenceService(){};
+    
+    public synchronized String getNextSequence() throws XdaoException{
+    	MessageIdentifier messageIdentifier=new MessageIdentifier();
+    	TurnkeyDefaultModel.beginTransaction();
+    	String sequenceEncode=null;;
+    	TurnkeySequence sequence=model.queryWithoutCondition();
+    	if(sequence!=null)
+    	{
+    	    System.out.println("==>"+sequence.getSequence());
+    		TurnkeySequence newSequence=new TurnkeySequence();
+    		int latestSequence=Integer.parseInt(sequence.getSequence())+1;
+    		//2775 修正SEQNO未歸0的bug
+    		if(latestSequence>99999999){
+    			latestSequence=0; //歸0
+    		}
+    		newSequence.setSequence(String.valueOf(latestSequence));
+    		sequenceEncode=messageIdentifier.getMessageId(new Date(), newSequence.getSequence());
+    		model.update(newSequence, sequence);
+    		TurnkeyDefaultModel.commit();
+    	}else
+    	{
+    	    System.out.println("==>get null");
+    		TurnkeySequence newSequence=new TurnkeySequence();
+    		newSequence.setSequence("1");
+    		sequenceEncode=messageIdentifier.getMessageId(new Date(), newSequence.getSequence());
+    		model.insert(newSequence);
+    		TurnkeyDefaultModel.commit();
+    	}
+        return sequenceEncode;
+    }
+}

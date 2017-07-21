@@ -1,0 +1,22 @@
+<TurnkeyUserConfig>
+  <db-type>h2</db-type>
+  <jdbc-driver>org.h2.Driver</jdbc-driver>
+  <jdbc-url>jdbc:h2:./innerfs/EINVTurnkey;IFEXISTS=TRUE</jdbc-url>
+  <db-user>sa</db-user>
+  <db-password></db-password>
+  <execute-environment>T</execute-environment>
+  <charaset-mapping-table></charaset-mapping-table>
+  <def-path></def-path>
+  <file-log></file-log>
+  <auto-run>False</auto-run>
+  <mail-notify>false</mail-notify>
+  <email-address></email-address>
+  <mail-server></mail-server>
+  <mail-auth>false</mail-auth>
+  <mail-account></mail-account>
+  <mail-password></mail-password>
+  <mail-notify-cycle>00:01</mail-notify-cycle>
+  <mail-log></mail-log>
+  <login-id>ADMIN</login-id>
+  <data-keep-days>30</data-keep-days>
+</TurnkeyUserConfig>

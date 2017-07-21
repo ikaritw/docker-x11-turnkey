@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?> 
+<notification>
+    
+    <!-- Memory Repository -->
+    <repository id="memRepository" class="com.tradevan.notice.repository.MemoryRepository">
+        <property name="init-size" value="20"/>
+    </repository>
+    
+    <!-- Memory Accepter -->
+    <accept id="memAccepter" class="com.tradevan.notice.accept.MemoryAccepter">
+        <repository id="memRepository"/>
+        <handler name="mailHandler"/>
+    </accept>
+    
+    <!-- Mail Handler -->
+    <handler name="mailHandler" class="com.tradevan.notice.handler.MailHandler">
+        <property name="smtp-host" value="localhost"/>
+        <property name="title" value=""/>
+        <property name="auth-user" value=""/>
+        <property name="auth-password" value=""/>
+        <property name="sender" value=""/>
+        <property name="check-email" value="false"/>
+    </handler>
+    <!-- Log Handler -->
+    <handler name="logHandler" class="com.tradevan.notice.handler.LogHandler">
+        <!-- 
+        <property name="config-file" value=""/>
+        <property name="system-name" value=""/>
+         -->
+        <property name="logger" value="CommonLogger"/>
+        <property name="level" value="info"/>
+    </handler>
+</notification>

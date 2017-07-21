@@ -1,0 +1,26 @@
+#! /bin/bash
+echo "excute..."
+. setMonEnv
+
+#JRE=/usr/bin/java
+JRE=`which java`
+
+if [[ "$JRE" == "" ]] ; then
+echo "###########################################"
+echo JRE not existed!
+echo "###########################################"
+exit
+fi                     
+
+MAIN_AP=com.tradevan.monitor.MonitorHandler
+
+echo $CLASSPATH
+echo 
+
+cmd=".... $MONITOR_REGION $MAIN_AP"
+echo $cmd;
+
+cmd="$JRE -DEINVTurnkeyMonitor -classpath $CLASSPATH -Xmx768m $MONITOR_REGION $MAIN_AP"
+
+# echo $cmd
+nohup `eval $cmd` > /dev/null 2> /dev/null &
