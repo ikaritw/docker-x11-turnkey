@@ -22,10 +22,10 @@ RUN apt-get autoclean && apt-get autoremove && rm -rf /var/lib/apt/lists/*
 ENV EINVTURNKEY_PATH="/EINVTurnkey" \
 EINVTURNKEY_URL="https://www.einvoice.nat.gov.tw/APTRNKY/index.html"
 
-COPY EINVTurnkey1.4.8-linux ./EINVTurnkey
+COPY ./EINVTurnkey1.4.8-linux.zip ./EINVTurnkey.zip
 COPY run.sh /run.sh
 
-RUN chmod a+x $EINVTURNKEY_PATH/linux/*.sct && chmod a+x /run.sh
+RUN unzip -q ./EINVTurnkey.zip && mv /EINVTurnkey1.4.8-linux $EINVTURNKEY_PATH && rm /EINVTurnkey.zip && chmod a+x $EINVTURNKEY_PATH/linux/*.sct && chmod a+x /run.sh
 
 CMD /run.sh
 

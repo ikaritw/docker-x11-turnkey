@@ -5,6 +5,8 @@ services:
   turnkey:  
     build: ./turnkey
     image: ikaritw/einvturnkey:1.4.8
+    container_name: ikaritw-einvturnkey
+    hostname: turnkey
     restart: "no"
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -17,6 +19,8 @@ services:
   turnkey-alpine:
     build: ./turnkey-alpine
     image: ikaritw/einvturnkey-alpine:1.4.8
+    container_name: ikaritw-einvturnkey-alpine
+    hostname: einvturnkey-alpine
     restart: "no"
     volumes:
       - /etc/localtime:/etc/localtime:ro

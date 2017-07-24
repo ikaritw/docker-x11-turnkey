@@ -27,7 +27,7 @@ EINVTURNKEY_URL="https://www.einvoice.nat.gov.tw/APTRNKY/index.html"
 COPY ./EINVTurnkey1.4.8-linux.zip ./EINVTurnkey.zip
 COPY run.sh /run.sh
 
-RUN unzip ./EINVTurnkey.zip && mv /EINVTurnkey1.4.8-linux $EINVTURNKEY_PATH && rm /EINVTurnkey.zip && chmod a+x $EINVTURNKEY_PATH/linux/*.sct && chmod a+x /run.sh
+RUN unzip -q ./EINVTurnkey.zip && mv /EINVTurnkey1.4.8-linux $EINVTURNKEY_PATH && rm /EINVTurnkey.zip && chmod a+x $EINVTURNKEY_PATH/linux/*.sct && chmod a+x /run.sh
 
 #CMD /run.sh
 CMD ["/usr/bin/midori","$EINVTURNKEY_URL"]
